@@ -1,0 +1,300 @@
+/* ODM popup — IDM-inspired neutral palette, single column. */
+
+:root {
+    --bg: #1a1c20;
+    --bg-elev: #23262b;
+    --bg-hover: #2c2f35;
+    --border: #34373d;
+    --text: #e6e8eb;
+    --text-dim: #9aa0a8;
+    --accent: #4f9eff;
+    --accent-hover: #6ab1ff;
+    --good: #5dd47f;
+    --warn: #f0a44c;
+    --bad: #e0584c;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+    width: 360px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+button {
+    background: none;
+    border: none;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+}
+
+.odm-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background: var(--bg-elev);
+    border-bottom: 1px solid var(--border);
+}
+
+.odm-brand {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.odm-brand__mark {
+    width: 10px;
+    height: 10px;
+    background: var(--accent);
+    border-radius: 2px;
+    display: inline-block;
+}
+
+.odm-brand__name {
+    font-weight: 600;
+    letter-spacing: 0.5px;
+}
+
+.odm-status {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-dim);
+    font-size: 12px;
+}
+
+.odm-status__dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--bad);
+    flex-shrink: 0;
+}
+
+.odm-status__dot[data-state="connecting"] { background: var(--warn); animation: odm-pulse 1.4s ease-in-out infinite; }
+.odm-status__dot[data-state="connected"] { background: var(--good); }
+.odm-status__dot[data-state="disconnected"] { background: var(--bad); }
+
+@keyframes odm-pulse {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 1; }
+}
+
+.odm-iconbtn {
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    color: var(--text-dim);
+    font-size: 14px;
+    line-height: 22px;
+    text-align: center;
+    transition: background 120ms ease, color 120ms ease;
+}
+
+.odm-iconbtn:hover {
+    background: var(--bg-hover);
+    color: var(--text);
+}
+
+.odm-section {
+    padding: 10px 12px 4px;
+    max-height: 460px;
+    overflow-y: auto;
+}
+
+.odm-section__head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 6px;
+    color: var(--text-dim);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+}
+
+.odm-section__count {
+    color: var(--text);
+    font-weight: 600;
+}
+
+.odm-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.odm-empty {
+    padding: 24px 12px;
+    color: var(--text-dim);
+    text-align: center;
+    font-size: 12px;
+    border: 1px dashed var(--border);
+    border-radius: 6px;
+}
+
+.odm-link {
+    color: var(--accent);
+    background: none;
+    border: none;
+    padding: 0;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.odm-link:hover { color: var(--accent-hover); }
+
+.odm-row {
+    display: flex;
+    gap: 10px;
+    padding: 8px 10px;
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    transition: background 120ms ease, border-color 120ms ease;
+}
+
+.odm-row:hover { background: var(--bg-hover); border-color: #444851; }
+
+.odm-row__icon {
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    background: rgba(79, 158, 255, 0.12);
+    color: var(--accent);
+    font-size: 14px;
+}
+
+.odm-row__icon[data-kind="audio"] {
+    background: rgba(93, 212, 127, 0.12);
+    color: var(--good);
+}
+
+.odm-row__icon[data-kind="page"] {
+    background: rgba(240, 164, 76, 0.14);
+    color: var(--warn);
+}
+
+.odm-row__body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.odm-row__title {
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.odm-row__meta {
+    font-size: 11px;
+    color: var(--text-dim);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.odm-row__actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 2px;
+}
+
+.odm-btn {
+    padding: 4px 10px;
+    border-radius: 4px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-size: 11px;
+    transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.odm-btn:hover { background: var(--bg-hover); border-color: #4a4e57; }
+
+.odm-btn--primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #0e1116;
+    font-weight: 600;
+}
+
+.odm-btn--primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+
+.odm-btn[data-state="busy"] { opacity: 0.6; pointer-events: none; }
+.odm-btn[data-state="ok"] { background: var(--good); border-color: var(--good); color: #0e1116; }
+.odm-btn[data-state="error"] { background: var(--bad); border-color: var(--bad); color: #fff; }
+
+.odm-menu {
+    display: flex;
+    flex-direction: column;
+    margin-top: 6px;
+    padding: 4px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    gap: 1px;
+}
+
+.odm-menu__item {
+    padding: 5px 8px;
+    border-radius: 3px;
+    font-size: 12px;
+    text-align: left;
+    background: transparent;
+    border: none;
+    color: var(--text);
+    cursor: pointer;
+    transition: background 120ms ease;
+}
+
+.odm-menu__item:hover { background: var(--bg-hover); }
+
+.odm-menu__item--audio { color: var(--good); }
+
+.odm-menu__divider {
+    height: 1px;
+    background: var(--border);
+    margin: 3px 2px;
+}
+
+.odm-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: var(--bg-elev);
+    border-top: 1px solid var(--border);
+    color: var(--text-dim);
+    font-size: 11px;
+}
+
+.odm-footer__queue span {
+    color: var(--text);
+    font-weight: 600;
+}
+
+.odm-footer__hint {
+    color: var(--text-dim);
+    font-size: 11px;
+    max-width: 160px;
+    text-align: right;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ODM</title>
+    <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+    <header class="odm-header">
+        <div class="odm-brand">
+            <span class="odm-brand__mark"></span>
+            <span class="odm-brand__name">ODM</span>
+        </div>
+        <div class="odm-status" id="bridge-status">
+            <span class="odm-status__dot" data-state="disconnected"></span>
+            <span class="odm-status__text">bağlanıyor…</span>
+        </div>
+        <button id="reconnect-btn" class="odm-iconbtn" title="Yeniden bağlan" aria-label="Yeniden bağlan">↻</button>
+    </header>
+
+    <section class="odm-section">
+        <div class="odm-section__head">
+            <span class="odm-section__title">Bu sekmedeki ortam</span>
+            <span class="odm-section__count" id="streams-count">0</span>
+        </div>
+        <div class="odm-list" id="streams-list">
+            <div class="odm-empty" id="streams-empty">
+                Henüz ortam yakalanmadı.<br />
+                Sayfayı yenileyin veya <button class="odm-link" id="scan-btn">tarama başlat</button>.
+            </div>
+        </div>
+    </section>
+
+    <footer class="odm-footer">
+        <div class="odm-footer__queue">
+            Aktif: <span id="queue-active">0</span> · Bekleyen: <span id="queue-pending">0</span>
+        </div>
+        <div class="odm-footer__hint" id="bridge-hint"></div>
+    </footer>
+
+    <template id="stream-row-template">
+        <div class="odm-row">
+            <div class="odm-row__icon" data-role="icon"></div>
+            <div class="odm-row__body">
+                <div class="odm-row__title" data-role="title"></div>
+                <div class="odm-row__meta" data-role="meta"></div>
+                <div class="odm-row__actions">
+                    <button class="odm-btn odm-btn--primary" data-role="queue">Kuyruğa</button>
+                    <button class="odm-btn" data-role="more" title="İndirme formatı seç">Format ▾</button>
+                    <button class="odm-btn" data-role="analyze" title="Detaylı analiz et">Analiz</button>
+                </div>
+                <div class="odm-menu" data-role="menu" hidden></div>
+            </div>
+        </div>
+    </template>
+
+    <script src="popup.js" type="module"></script>
+</body>
+</html>
