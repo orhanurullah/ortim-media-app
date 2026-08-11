@@ -1,12 +1,14 @@
-# Ortim Medya App — Kullanım Kılavuzu
+# Ortim Media Manager (OMM) — Kullanım Kılavuzu
 
-Ortim Medya App (ODM), video ve ses içeriklerini bilgisayarınıza
-indirmenizi, kütüphanenizi yönetmenizi ve indirdiğiniz medyayı
-düzenlemenizi sağlayan **Windows için yerel bir masaüstü uygulamasıdır**.
+Ortim Media Manager (OMM), video ve ses içeriklerini bilgisayarınıza
+indirmenizi, kütüphanenizi yönetmenizi, indirdiğiniz medyayı düzenlemenizi
+**ve kayıtlarınızı tamamen çevrimdışı yapay zekâ ile yazıya dökmenizi**
+sağlayan **Windows için yerel bir masaüstü uygulamasıdır**.
 
-> **Yerel ve gizli:** Uygulama hiçbir uzak sunucu kullanmaz; her şey
-> sizin bilgisayarınızda olup biter. Tarayıcı eklentisi de yalnızca
-> kendi bilgisayarınızdaki uygulamayla konuşur.
+> **Yerel ve gizli:** Uygulama hiçbir uzak sunucu kullanmaz; indirme,
+> düzenleme ve **transkripsiyon dahil her şey sizin bilgisayarınızda** olup
+> biter. Ses/videolarınız yazıya dökülürken de hiçbir yere yüklenmez.
+> Tarayıcı eklentisi de yalnızca kendi bilgisayarınızdaki uygulamayla konuşur.
 
 ---
 
@@ -16,70 +18,73 @@ düzenlemenizi sağlayan **Windows için yerel bir masaüstü uygulamasıdır**.
 2. [Kurulum — masaüstü uygulaması](#2-kurulum--masaüstü-uygulaması)
 3. [Tarayıcı eklentisini yükleme](#3-tarayıcı-eklentisini-yükleme)
 4. [İlk kullanım — bir video indirme](#4-ilk-kullanım--bir-video-indirme)
-5. [Kütüphane ve düzenleme paneli](#5-kütüphane-ve-düzenleme-paneli)
-6. [Sorun giderme](#6-sorun-giderme)
-7. [Yasal uyarı](#7-yasal-uyarı)
+5. [Transkripsiyon — sesi/videoyu yazıya dökme](#5-transkripsiyon--sesivideoyu-yazıya-dökme)
+6. [Kütüphane ve düzenleme paneli](#6-kütüphane-ve-düzenleme-paneli)
+7. [Sorun giderme](#7-sorun-giderme)
+8. [Yasal uyarı](#8-yasal-uyarı)
 
 ---
 
 ## 1. Sistem gereksinimleri
 
 - **Windows 10 veya Windows 11** (64-bit)
-- Yaklaşık **400 MB boş disk alanı** (uygulama + paketli araçlar için)
+- Yaklaşık **500 MB boş disk alanı** (uygulama + paketli araçlar için;
+  transkripsiyon modeli ilk kullanımda ayrıca indirilir)
 - İndirilen videolar için ek disk alanı (kullanıma göre değişir)
 - **Microsoft Edge WebView2 Runtime**
   - Windows 10/11'de zaten kurulu gelir.
   - Eksikse Microsoft'tan indirilebilir:
     <https://developer.microsoft.com/microsoft-edge/webview2/>
 
-Uygulama **kurulum gerektirmez** — tek bir taşınabilir `.exe` dosyasıdır.
-
 ---
 
 ## 2. Kurulum — masaüstü uygulaması
 
-### Adım 1 — `.exe` dosyasını çift tıklayın
+### Adım 1 — Kurulum dosyasını indirin
 
-`ODM-Desktop-Portable-1.0.0.exe` dosyasına çift tıklayın.
+En güncel sürümü indirin:
+
+**<https://github.com/orhanurullah/ortim-media-app/releases/latest>**
+
+Sayfadaki **`OrtimMediaManager-Setup.exe`** dosyasını indirin.
 
 ### Adım 2 — Windows SmartScreen uyarısı
 
-İlk açılışta Windows muhtemelen şu mesajı gösterecek:
+İlk çalıştırmada Windows muhtemelen şu mesajı gösterecek:
 
 > **Windows bilgisayarınızı korudu**
 > Microsoft Defender SmartScreen, tanınmayan bir uygulamanın
 > başlamasını engelledi.
 
-Bu uyarı **uygulamanın imzalı olmamasından** kaynaklanır, virüs
-tehdidi değildir. Devam etmek için:
+Bu uyarı **uygulamanın henüz dijital imzalı olmamasından** kaynaklanır,
+bir virüs tehdidi değildir. Devam etmek için:
 
 1. Mavi yazıdaki **"Daha fazla bilgi"** bağlantısına tıklayın.
 2. Açılan **"Yine de çalıştır"** düğmesine basın.
 
-Bu uyarıyı yalnızca **ilk açılışta** görürsünüz.
+Bu uyarıyı yalnızca **ilk kurulumda** görürsünüz.
 
-### Adım 3 — Otomatik açılma
+### Adım 3 — Kurulum
 
-Uygulama ilk açılışta:
+Kurucu **yönetici izni istemez**; uygulamayı yalnızca sizin kullanıcı
+hesabınıza kurar ve Başlat menüsüne **"Ortim Media Manager"** kısayolu
+ekler. Kurulum birkaç saniye sürer.
 
-- Kendini `%LOCALAPPDATA%\OrtimDM\Portable\1.0.0\` klasörüne açar
-  (yaklaşık 360 MB).
-- Pencereyi başlatır.
-
-Bu işlem **20–30 saniye** sürebilir. Sonraki açılışlar anında olur.
+Uygulama ayarlarını ve kütüphane veritabanını
+`%LocalAppData%\OMMDesktop` klasöründe tutar.
 
 ### Adım 4 — İndirme klasörünü seçin
 
 Uygulama açıldığında **Ayarlar** sekmesinden indirilen dosyaların
 nereye kaydedileceğini seçebilirsiniz. Varsayılan olarak
-`C:\Users\<sizin_adınız>\Downloads\ODM\` kullanılır.
+`C:\Users\<sizin_adınız>\Downloads\OMM\` kullanılır.
 
 ---
 
 ## 3. Tarayıcı eklentisini yükleme
 
 Tarayıcı eklentisi, açtığınız sayfalardaki video ve ses akışlarını
-otomatik olarak tespit eder ve tek tıkla ODM Desktop'a gönderir.
+otomatik olarak tespit eder ve tek tıkla masaüstü uygulamasına gönderir.
 
 ### Chrome için
 
@@ -99,13 +104,13 @@ otomatik olarak tespit eder ve tek tıkla ODM Desktop'a gönderir.
 
 ### Bağlantıyı doğrulama
 
-1. **ODM Desktop'ı açın** (eklenti masaüstü uygulamasıyla konuşur).
-2. Tarayıcının sağ üstündeki uzantılar simgesinden **ODM** simgesine
-   tıklayın (görünmüyorsa puzzle parça simgesi → ODM → "raptiye"
+1. **Ortim Media Manager'ı açın** (eklenti masaüstü uygulamasıyla konuşur).
+2. Tarayıcının sağ üstündeki uzantılar menüsünden uygulamanın simgesine
+   tıklayın (görünmüyorsa puzzle parça simgesi → uzantı → "raptiye"
    simgesiyle sabitleyin).
 3. Açılan popup'ın üst başlığında **"bağlı 39343"** yazmalı (yeşil).
-   - "kopuk" yazıyorsa: ODM Desktop kapalı veya 39343 portu başka bir
-     uygulama tarafından kullanılıyor.
+   - "kopuk" yazıyorsa: masaüstü uygulaması kapalı ya da 39343 portu başka
+     bir uygulama tarafından kullanılıyor.
 
 ---
 
@@ -113,19 +118,18 @@ otomatik olarak tespit eder ve tek tıkla ODM Desktop'a gönderir.
 
 ### Yöntem A — tarayıcı eklentisi ile (önerilen)
 
-1. ODM Desktop açık olsun.
+1. Ortim Media Manager açık olsun.
 2. Herhangi bir video sayfası açın (YouTube, Vimeo, Twitter, haber
    siteleri vb.).
-3. Sayfa yüklendikten sonra ODM eklenti popup'ını açın — bulunan
-   akışlar listelenmiş olacak.
+3. Sayfa yüklendikten sonra eklenti popup'ını açın — bulunan akışlar
+   listelenmiş olacak.
 4. İstediğiniz akışın yanındaki **"Kuyruğa"** veya **"İndir"** düğmesine
    tıklayın.
-5. ODM Desktop'taki **Kuyruk** sekmesinde indirme görünür ve başlar.
+5. Uygulamadaki **Kuyruk** sekmesinde indirme görünür ve başlar.
 
 ### Yöntem B — URL yapıştırma
 
-1. ODM Desktop'ta üst kısımdaki adres çubuğuna video URL'sini
-   yapıştırın.
+1. Uygulamada üst kısımdaki adres çubuğuna video URL'sini yapıştırın.
 2. **"Analiz Et"** düğmesine basın.
 3. Format ve kalite seçin (önayar veya manuel).
 4. **"İndir"** butonuna basın.
@@ -137,11 +141,48 @@ tıklayarak oynatabilir, açıklamalarını görebilir veya düzenleyebilirsiniz
 
 ---
 
-## 5. Kütüphane ve düzenleme paneli
+## 5. Transkripsiyon — sesi/videoyu yazıya dökme
 
-**Kütüphane** sekmesi indirdiğiniz tüm dosyaları gösterir. Bir öğeye
-sağ tıklayarak veya seçip **Düzenle** menüsünden şu işlemleri
-yapabilirsiniz:
+Ortim Media Manager, ses ve video kayıtlarınızı **tamamen çevrimdışı**,
+cihaz üstünde çalışan **Whisper** yapay zekâsıyla aranabilir metne
+dönüştürür. Hiçbir ses dosyası buluta yüklenmez.
+
+### Model indirme
+
+1. **Transkriptler** ekranını açın.
+2. Bir model indirin. Uygulama makinenize göre bir model **önerir** —
+   çoğu bilgisayar için **Base** iyi bir denge sunar (küçük **Tiny**
+   modeli hızlıdır ama belirgin biçimde daha az doğrudur).
+
+### Tek bir dosyayı yazıya dökme
+
+1. Kütüphane'de bir ses/video dosyası seçin.
+2. **Araçlar** sekmesinden **Transkribe et**'e basın.
+3. İşlem cihazınızda çalışır; tamamlanınca metin görüntülenir.
+
+### Birden çok dosyayı aynı anda (toplu)
+
+1. Kütüphane'de **iki veya daha fazla** ses/video dosyası seçin
+   (eklemek için Ctrl+tık, aralık için Shift+tık ya da "Tümünü seç").
+2. Listenin üstünde beliren toplu işlem çubuğundan **"Transkribe et"**e
+   tıklayın.
+3. Her dosya kuyruğa eklenir ve **tek tek** işlenir; toplu iş aynı anda
+   birden çok model çalıştırıp belleğinizi tüketmez.
+
+### Sonuçla ne yapabilirsiniz
+
+- **Tam metin arama** ve sonuçtaki ana atlama.
+- Satır satır **düzenleme**.
+- **SRT, VTT veya TXT** olarak dışa aktarma; ayrıca **Word (.docx)** rapor.
+
+> Transkripsiyon, **Studio** özelliğidir.
+
+---
+
+## 6. Kütüphane ve düzenleme paneli
+
+**Kütüphane** sekmesi indirdiğiniz tüm dosyaları gösterir. Bir öğeyi
+seçip **Araçlar** menüsünden şu işlemleri yapabilirsiniz:
 
 | İşlem | Açıklama |
 |---|---|
@@ -159,18 +200,19 @@ yapabilirsiniz:
 | **Döndür** | 90° / 180° / 270° |
 | **Sıkıştır** | Dosya boyutunu küçült (CRF presetler) |
 | **GIF dışa aktar** | Belirli bir aralığı GIF olarak kaydet |
+| **Transkribe et** | Sesi/videoyu çevrimdışı yazıya dök (Studio) |
 
-Her işlem **yeni bir dosya** oluşturur — orijinaliniz korunur.
+Her düzenleme işlemi **yeni bir dosya** oluşturur — orijinaliniz korunur.
 
 ---
 
-## 6. Sorun giderme
+## 7. Sorun giderme
 
 ### Eklenti popup'ında "kopuk" yazıyor
 
-- ODM Desktop açık mı? Açık değilse açın.
-- ODM Desktop açıkken hâlâ "kopuk" diyorsa: 39343 portunu başka bir
-  uygulama tutuyor olabilir. ODM Desktop'ı yeniden başlatın.
+- Ortim Media Manager açık mı? Açık değilse açın.
+- Açıkken hâlâ "kopuk" diyorsa: 39343 portunu başka bir uygulama
+  tutuyor olabilir. Uygulamayı yeniden başlatın.
 
 ### "Windows bilgisayarınızı korudu" uyarısı
 
@@ -181,7 +223,7 @@ de çalıştır"** ile geçebilirsiniz. Bkz. [Adım 2](#adım-2--windows-smartsc
 
 - Bazı siteler videoları özel oynatıcılarla (DRM, custom MSE buffer)
   yükler ve dışarıdan görünmez. Bu durumda video sayfasının URL'sini
-  doğrudan ODM Desktop'a yapıştırın.
+  doğrudan uygulamaya yapıştırın.
 
 ### İndirme yarıda kaldı / yavaş
 
@@ -189,15 +231,23 @@ de çalıştır"** ile geçebilirsiniz. Bkz. [Adım 2](#adım-2--windows-smartsc
 - Ağ bağlantınızı kontrol edin.
 - VPN kullanıyorsanız geçici olarak kapatıp deneyin.
 
+### Transkripsiyon sonucu boş / anlamsız çıkıyor
+
+- **Base** modelini kullandığınızdan emin olun. En küçük **Tiny** modeli
+  hızlıdır ama özellikle müzik/gürültü içeren kayıtlarda zayıf sonuç
+  verebilir; Ayarlar'dan daha büyük bir model seçin.
+
 ### "WebView2 bulunamadı" hatası
 
 Microsoft'tan WebView2 Runtime kurun:
 <https://developer.microsoft.com/microsoft-edge/webview2/>
 
-### Uygulama açılmıyor
+### Uygulamayı sıfırlamak
 
-- `%LOCALAPPDATA%\OrtimDM\Portable\1.0.0\` klasörünü silin ve portable
-  `.exe`'yi tekrar çalıştırın — sıfırdan açar.
+Ayarlar/veritabanını sıfırlamak isterseniz uygulamayı kapatıp
+`%LocalAppData%\OMMDesktop` klasörünü silin, sonra tekrar açın —
+uygulama sıfırdan kurulmuş gibi başlar. (İndirdiğiniz medya dosyaları
+bu klasörde değildir, silinmez.)
 
 ### Antivirüs / SmartScreen uyarıları
 
@@ -211,10 +261,10 @@ sadece uygulamanın imzasız olduğu anlamına gelir. İçinde paketli
 
 ---
 
-## 7. Yasal uyarı
+## 8. Yasal uyarı
 
-ODM Desktop **yalnızca** sahibi olduğunuz, yönettiğiniz veya yasal
-olarak indirme/işleme hakkına sahip olduğunuz içerikler için
+Ortim Media Manager **yalnızca** sahibi olduğunuz, yönettiğiniz veya
+yasal olarak indirme/işleme hakkına sahip olduğunuz içerikler için
 kullanılmalıdır.
 
 - Pek çok platform (YouTube, Vimeo vb.) hizmet şartlarında otomatik
