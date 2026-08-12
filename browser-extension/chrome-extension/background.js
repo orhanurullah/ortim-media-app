@@ -75,6 +75,12 @@ bridgeClient.addEventListener('status-changed', () => {
 bridgeClient.addEventListener('status-updated', () => {
     broadcastBridgeStatus();
 });
+bridgeClient.addEventListener('language-changed', () => {
+    // App language changed mid-connection: relocalize the context menu (the
+    // popup relocalizes itself from the broadcast snapshot).
+    setupContextMenus();
+    broadcastBridgeStatus();
+});
 
 chrome.alarms.create(KEEP_ALIVE_ALARM, { periodInMinutes: KEEP_ALIVE_INTERVAL_MIN });
 chrome.alarms.onAlarm.addListener((alarm) => {

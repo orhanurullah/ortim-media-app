@@ -157,6 +157,16 @@ class BridgeClient extends EventTarget {
             const body = await response.json();
             this.lastStatus = body;
             this.lastError = null;
+            // The status poll carries the app's current language, so a change
+            // made while connected is mirrored live instead of only on reconnect.
+            if (
+                typeof body.uiLanguage === 'string' &&
+                body.uiLanguage &&
+                body.uiLanguage !== this.uiLanguage
+            ) {
+                this.uiLanguage = body.uiLanguage;
+                this._emit('language-changed', this.uiLanguage);
+            }
             this._emit('status-updated', body);
             return body;
         } catch (error) {
