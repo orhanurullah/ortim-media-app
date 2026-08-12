@@ -1,15 +1,17 @@
 {
   "manifest_version": 3,
-  "name": "ODM Stream Detector",
-  "version": "3.0.0",
-  "description": "IDM-style video/audio stream capture and queueing for ODM Desktop.",
+  "name": "Ortim Media Manager",
+  "version": "3.1.0",
+  "description": "Detects video/audio streams on any page and sends them to the Ortim Media Manager (OMM) desktop app.",
   "permissions": [
     "activeTab",
     "storage",
     "tabs",
     "scripting",
     "alarms",
-    "webRequest"
+    "webRequest",
+    "contextMenus",
+    "notifications"
   ],
   "host_permissions": [
     "<all_urls>",
@@ -38,7 +40,7 @@
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "ODM Stream Detector",
+    "default_title": "Ortim Media Manager",
     "default_icon": {
       "16": "icon-16.png",
       "32": "icon-32.png",

@@ -14,11 +14,63 @@ const MAX_PER_TAB = 50;
 
 const tabStreams = new Map(); // tabId -> Map<signature, StreamRecord>
 
+// Query parameters that only version a single logical asset (byte ranges,
+// segment numbers, cache-busters). Stripping them collapses the dozens of
+// near-identical variant requests one stream emits into a single row.
+const VOLATILE_PARAMS = ['range', 'rn', 'rbuf', 'sq', 'dur', 'keepalive', 'mt', 'ei', 'ip', 'clen', 'gir'];
+
+/**
+ * Transport-level noise a person never downloads directly: HLS/DASH media
+ * segments, byte-range chunks, init segments and encryption keys, plus the
+ * YouTube/Google delivery URLs (those pages are handled by the page → yt-dlp
+ * path). Dropping these is what keeps one video from flooding the list with
+ * hundreds of rows and evicting the manifest that is actually downloadable.
+ */
+export function isTransportNoise(url) {
+    if (!url) return true;
+    const u = url.toLowerCase();
+    if (u.includes('googlevideo.com') || u.includes('/videoplayback')) return true;
+    if (/\.ts(?:[?#]|$)/.test(u)) return true;
+    if (/\.m4s(?:[?#]|$)/.test(u)) return true;
+    if (/(?:[/_.-])init(?:[/_.-]|\.mp4|\.m4s|$)/.test(u)) return true;
+    if (/\.key(?:[?#]|$)/.test(u)) return true;
+    if (/[?&](?:range|sq|segment|seg|frag|chunk)=/.test(u)) return true;
+    // e.g. "seg-12", "segment_001", "chunk5" — a segment index, not a title
+    // that merely contains the word "segment".
+    if (/[/_-](?:seg|segment|frag|chunk)[-_.]?\d/.test(u)) return true;
+    return false;
+}
+
+/**
+ * Classify a URL into the kinds we surface, most-actionable first, or null if
+ * it is not a recognisable downloadable media entry. `hls`/`dash` are the
+ * master manifests; `video`/`audio` are whole files.
+ */
+export function classifyMedia(url, contentType) {
+    const u = (url || '').toLowerCase();
+    const ct = (contentType || '').toLowerCase();
+    if (/\.m3u8(?:[?#]|$)/.test(u) || ct.includes('mpegurl')) return 'hls';
+    if (/\.mpd(?:[?#]|$)/.test(u) || ct.includes('dash+xml')) return 'dash';
+    if (/\.(?:mp4|webm|mkv|mov|m4v|flv|avi)(?:[?#]|$)/.test(u) || ct.startsWith('video/')) return 'video';
+    if (/\.(?:mp3|m4a|aac|ogg|opus|wav|flac)(?:[?#]|$)/.test(u) || ct.startsWith('audio/')) return 'audio';
+    return null;
+}
+
+/** URL stripped of volatile params and hash, so variant requests collapse. */
+function canonicalUrl(url) {
+    try {
+        const parsed = new URL(url);
+        for (const param of VOLATILE_PARAMS) parsed.searchParams.delete(param);
+        const query = parsed.searchParams.toString();
+        return parsed.origin + parsed.pathname + (query ? `?${query}` : '');
+    } catch {
+        return (url || '').split('#')[0];
+    }
+}
+
 function signatureFor(stream) {
-    const url = (stream.url || '').split('#')[0];
-    const type = stream.type || 'video';
-    const sizeBucket = stream.sizeBytes ? Math.floor(Number(stream.sizeBytes) / 65536) : 0;
-    return `${type}|${url}|${sizeBucket}`;
+    const kind = stream.streamKind || stream.type || 'video';
+    return `${kind}|${canonicalUrl(stream.url)}`;
 }
 
 function fileNameFromUrl(url) {
@@ -53,10 +105,18 @@ function detectExtension(url, contentType) {
 export function recordStream(tabId, raw) {
     if (!Number.isInteger(tabId) || tabId < 0) return null;
     if (!raw || !raw.url) return null;
+    if (isTransportNoise(raw.url)) return null;
+
+    // Only keep recognisable, downloadable media. This is the single chokepoint
+    // every detection path (webRequest, fetch/XHR hooks, DOM scan) flows
+    // through, so filtering here cleans up the list everywhere at once.
+    const kind = classifyMedia(raw.url, raw.contentType);
+    if (!kind) return null;
 
     const stream = {
         url: raw.url,
-        type: raw.type === 'audio' ? 'audio' : 'video',
+        streamKind: kind,
+        type: kind === 'audio' ? 'audio' : 'video',
         contentType: raw.contentType || '',
         title: raw.title || '',
         source: raw.source || 'unknown',

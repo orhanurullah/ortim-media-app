@@ -18,13 +18,14 @@ import {
     clearTab,
     streamCountForTab,
     findStream,
+    isTransportNoise,
 } from './stream-store.js';
 
 const KEEP_ALIVE_ALARM = 'odm-keep-alive';
 const KEEP_ALIVE_INTERVAL_MIN = 0.4; // ~24 seconds; under Chrome's 30s suspend
 const MEDIA_URL_HINTS = [
-    '.m3u8', '.mpd', '.mp4', '.webm', '.mkv', '.m4a', '.mp3', '.ts', '.aac', '.flac', '.mov',
-    '/videoplayback', 'googlevideo.com', 'cdninstagram.com', 'fbcdn.net',
+    '.m3u8', '.mpd', '.mp4', '.webm', '.mkv', '.m4a', '.mp3', '.aac', '.flac', '.mov',
+    'cdninstagram.com', 'fbcdn.net',
     'ttvnw.net', 'twimg.com/amplify_video', '/hls/', '/dash/',
 ];
 const MEDIA_TYPE_HINTS = ['video/', 'audio/', 'application/x-mpegurl', 'application/vnd.apple.mpegurl', 'application/dash+xml'];
@@ -36,11 +37,40 @@ const PAGE_CAPTURE_HOSTS = [
     'streamable.com', 'bilibili.com', 'kick.com', 'rumble.com',
 ];
 
+// The context menu and notifications mirror the desktop app's language, which
+// the bridge relays via `bridgeClient.uiLanguage`.
+const BG_MESSAGES = {
+    tr: {
+        sendToOmm: "OMM'ye gönder",
+        queued: 'Kuyruğa gönderildi',
+        analyzeOpened: 'OMM analiz için açıldı',
+        notConnected: 'Masaüstü OMM uygulaması açık değil.',
+        sendFailed: 'Gönderilemedi. Tekrar deneyin.',
+    },
+    en: {
+        sendToOmm: 'Send to OMM',
+        queued: 'Queued for download',
+        analyzeOpened: 'Opened in OMM to analyze',
+        notConnected: 'The OMM desktop app is not running.',
+        sendFailed: 'Could not send. Try again.',
+    },
+};
+
+function bgT(key) {
+    const lang = bridgeClient.uiLanguage === 'en' ? 'en' : 'tr';
+    return (BG_MESSAGES[lang] && BG_MESSAGES[lang][key]) || BG_MESSAGES.tr[key] || key;
+}
+
 console.log('[ODM] background service worker boot, ext id =', chrome.runtime?.id);
 bridgeClient.start();
 
+// Toolbar badge: green count of captured streams, per tab.
+chrome.action?.setBadgeBackgroundColor?.({ color: '#16a34a' });
+
 bridgeClient.addEventListener('status-changed', () => {
     broadcastBridgeStatus();
+    // The app's language arrives with the bridge connection; refresh the menu.
+    setupContextMenus();
 });
 bridgeClient.addEventListener('status-updated', () => {
     broadcastBridgeStatus();
@@ -55,6 +85,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 
 chrome.runtime.onInstalled.addListener(() => {
     bridgeClient.start();
+    setupContextMenus();
 });
 
 chrome.runtime.onStartup.addListener(() => {
@@ -68,6 +99,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 chrome.tabs.onUpdated.addListener((tabId, info) => {
     if (info.status === 'loading' && info.url) {
         clearTab(tabId);
+        updateBadge(tabId);
     }
 });
 
@@ -153,9 +185,14 @@ async function injectCapture(tabId) {
 }
 
 function onWebRequest(details) {
+    // The extension only does anything useful while the desktop app is open.
+    // When it is closed, skip the per-response work entirely so the extension
+    // costs the browser next to nothing on the pages the user actually visits.
+    if (bridgeClient.status !== ConnectionStatus.CONNECTED) return;
     const tabId = details.tabId;
     if (!Number.isInteger(tabId) || tabId < 0) return;
     const url = details.url || '';
+    if (isTransportNoise(url)) return;
     const lowered = url.toLowerCase();
     let contentType = '';
     let sizeBytes = null;
@@ -239,6 +276,7 @@ async function analyzeUrl(message) {
         url,
         title: message.title || null,
         tabId: Number.isInteger(message.tabId) ? message.tabId : null,
+        transcribe: !!message.transcribe,
     });
 }
 
@@ -251,6 +289,19 @@ async function queueDownload(message) {
     const chosenType = message.streamType || stored?.type || 'video';
     const chosenQuality = message.quality || stored?.quality || null;
 
+    // The page's own headers let the desktop downloader fetch a captured CDN
+    // URL that would otherwise 403. The tab URL is the Referer; the browser's
+    // User-Agent matches what the page itself sent.
+    let referer = null;
+    if (Number.isInteger(tabId)) {
+        try {
+            const tab = await chrome.tabs.get(tabId);
+            if (tab?.url && /^https?:/i.test(tab.url)) referer = tab.url;
+        } catch {
+            /* tab gone; queue without a referer */
+        }
+    }
+
     const payload = {
         data: {
             stream: {
@@ -262,6 +313,8 @@ async function queueDownload(message) {
                 sizeBytes: stored?.sizeBytes || null,
                 audioOnly: chosenType === 'audio',
                 audioFormat: message.audioFormat || null,
+                referer,
+                userAgent: navigator.userAgent,
             },
             downloadType: message.downloadType || (chosenType === 'audio' ? 'AUDIO' : 'VIDEO'),
             queueId: message.queueId || null,
@@ -295,6 +348,7 @@ async function persistBridgeSnapshot(snapshot) {
 
 function broadcastTabStreams(tabId) {
     safeBroadcast({ type: 'TAB_STREAMS_UPDATED', tabId, streams: listStreams(tabId) });
+    updateBadge(tabId);
 }
 
 function safeBroadcast(message) {
@@ -302,5 +356,93 @@ function safeBroadcast(message) {
         chrome.runtime.sendMessage(message, () => void chrome.runtime.lastError);
     } catch {
         /* no popup open; ignore */
+    }
+}
+
+// --- Toolbar badge -------------------------------------------------------
+// Per-tab count of captured streams, so the user sees activity without
+// opening the popup. Cleared implicitly (count → 0) on navigation.
+
+function updateBadge(tabId) {
+    if (!chrome.action?.setBadgeText || !Number.isInteger(tabId) || tabId < 0) return;
+    const count = streamCountForTab(tabId);
+    chrome.action
+        .setBadgeText({ tabId, text: count > 0 ? String(count) : '' })
+        .catch(() => undefined);
+}
+
+// --- Context menu: "Send to OMM" ----------------------------------------
+// Right-click a video/audio/link/page → hand it to the desktop app without
+// opening the popup. Media/link → queue download; page → analyze (CaptureView).
+
+const CONTEXT_MENU_ID = 'omm-send';
+
+function setupContextMenus() {
+    if (!chrome.contextMenus) return;
+    chrome.contextMenus.removeAll(() => {
+        void chrome.runtime.lastError;
+        chrome.contextMenus.create(
+            {
+                id: CONTEXT_MENU_ID,
+                title: bgT('sendToOmm'),
+                contexts: ['video', 'audio', 'link', 'page'],
+            },
+            () => void chrome.runtime.lastError,
+        );
+    });
+}
+
+chrome.contextMenus?.onClicked.addListener((info, tab) => {
+    if (info.menuItemId !== CONTEXT_MENU_ID) return;
+    handleContextMenuClick(info, tab).catch((error) => {
+        console.warn('[ODM] context menu action failed', error);
+    });
+});
+
+async function handleContextMenuClick(info, tab) {
+    const tabId = tab?.id ?? null;
+    const mediaUrl = info.srcUrl || info.linkUrl || null;
+    if (mediaUrl) {
+        const result = await queueDownload({ tabId, url: mediaUrl, title: tab?.title || '' });
+        notifyResult(result, mediaUrl, bgT('queued'));
+    } else {
+        const pageUrl = info.pageUrl || tab?.url;
+        if (!pageUrl) return;
+        const result = await analyzeUrl({ url: pageUrl, title: tab?.title || '', tabId });
+        notifyResult(result, pageUrl, bgT('analyzeOpened'));
+    }
+}
+
+// --- Notifications: context-menu action feedback ------------------------
+// The context menu has no popup to show status, so confirm the outcome here.
+
+function notifyResult(result, url, okTitle) {
+    if (!chrome.notifications?.create) return;
+    const ok = !!result?.ok;
+    let message;
+    if (ok) {
+        message = shortenUrl(url);
+    } else if (result?.reason === 'not_connected') {
+        message = bgT('notConnected');
+    } else {
+        message = bgT('sendFailed');
+    }
+    chrome.notifications.create(
+        {
+            type: 'basic',
+            iconUrl: chrome.runtime.getURL('icon-128.png'),
+            title: ok ? okTitle : 'OMM',
+            message,
+        },
+        () => void chrome.runtime.lastError,
+    );
+}
+
+function shortenUrl(url) {
+    try {
+        const parsed = new URL(url);
+        return (parsed.hostname + parsed.pathname).slice(0, 100);
+    } catch {
+        return String(url).slice(0, 100);
     }
 }

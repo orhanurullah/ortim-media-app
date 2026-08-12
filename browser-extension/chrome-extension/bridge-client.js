@@ -39,6 +39,7 @@ class BridgeClient extends EventTarget {
         this.port = null;
         this.authToken = null;
         this.bridgeVersion = null;
+        this.uiLanguage = null;
         this.lastStatus = null;
         this.lastError = null;
         this._backoffIndex = 0;
@@ -67,6 +68,7 @@ class BridgeClient extends EventTarget {
             status: this.status,
             port: this.port,
             bridgeVersion: this.bridgeVersion,
+            uiLanguage: this.uiLanguage,
             queue: this.lastStatus?.downloadQueue || [],
             activeQueueCount: this.lastStatus?.activeQueueCount ?? 0,
             queueCount: this.lastStatus?.queueCount ?? 0,
@@ -184,6 +186,7 @@ class BridgeClient extends EventTarget {
                 this.port = port;
                 this.authToken = result.authToken;
                 this.bridgeVersion = result.bridgeVersion;
+                this.uiLanguage = result.uiLanguage || this.uiLanguage;
                 this._backoffIndex = 0;
                 this.lastError = null;
                 this._setStatus(ConnectionStatus.CONNECTED);
@@ -221,6 +224,7 @@ class BridgeClient extends EventTarget {
                 ok: true,
                 authToken: body.authToken,
                 bridgeVersion: body.bridgeVersion,
+                uiLanguage: body.uiLanguage,
             };
         } catch (error) {
             this.lastError = `bootstrap_fetch_${stringifyError(error)}`;

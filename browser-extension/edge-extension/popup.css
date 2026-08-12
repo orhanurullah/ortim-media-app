@@ -236,6 +236,10 @@ button {
 
 .odm-btn--primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
 
+/* Studio accent (transcription funnel) — violet, set apart from primary green. */
+.odm-btn--studio { border-color: #7c5cff; color: #b9a7ff; }
+.odm-btn--studio:hover { background: rgba(124, 92, 255, 0.15); border-color: #7c5cff; }
+
 .odm-btn[data-state="busy"] { opacity: 0.6; pointer-events: none; }
 .odm-btn[data-state="ok"] { background: var(--good); border-color: var(--good); color: #0e1116; }
 .odm-btn[data-state="error"] { background: var(--bad); border-color: var(--bad); color: #fff; }

@@ -23,6 +23,9 @@
 
     const host = (location.hostname || '').toLowerCase();
     const looksLikeMediaHost = MEDIA_HOST_HINTS.some(hint => host.includes(hint));
+    // Inject the deep capture not only on the known media-host allowlist but on
+    // any page that actually carries a media element, so generic sites work too.
+    const needsCapture = looksLikeMediaHost || !!document.querySelector('video, audio, source[src]');
 
     const sendToBackground = (message) => {
         try {
@@ -54,7 +57,7 @@
             action: 'CONTENT_SCRIPT_READY',
             url: location.href,
             timestamp: Date.now(),
-            needsCapture: looksLikeMediaHost,
+            needsCapture,
             probeVersion: 1
         });
     };
@@ -83,6 +86,15 @@
         return true;
     });
 
+    announceReady();
+
+    // Everything below is only worthwhile on pages that carry media. On the
+    // vast majority of pages the probe stays inert after announcing itself — no
+    // navigation watcher, no repeated DOM scans — so ordinary browsing is not
+    // weighed down. Direct media is still caught by the background's webRequest
+    // sniffing; this only skips the page-level DOM work.
+    if (!needsCapture) return;
+
     let lastUrl = location.href;
     const onNavigation = () => {
         if (location.href === lastUrl) return;
@@ -93,13 +105,14 @@
             timestamp: Date.now()
         });
     };
+    // popstate/hashchange cover back-forward and hash routes for free. A slow
+    // location poll catches history.pushState SPA navigations (which a content
+    // script cannot hook from its isolated world) far more cheaply than a
+    // document-wide MutationObserver firing on every DOM mutation.
     window.addEventListener('popstate', onNavigation);
     window.addEventListener('hashchange', onNavigation);
-    const navigationObserver = new MutationObserver(onNavigation);
-    navigationObserver.observe(document.documentElement, { subtree: true, childList: true });
-    setTimeout(() => navigationObserver.disconnect(), 30000);
-
-    announceReady();
+    const navigationPoll = setInterval(onNavigation, 1000);
+    window.addEventListener('pagehide', () => clearInterval(navigationPoll), { once: true });
 
     if (document.readyState === 'complete' || document.readyState === 'interactive') {
         setTimeout(reportScanResults, 1500);
