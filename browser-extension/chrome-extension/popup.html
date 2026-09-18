@@ -36,7 +36,21 @@
         <div class="odm-footer__queue">
             <span data-i18n="active">Aktif:</span> <span id="queue-active">0</span> · <span data-i18n="pending">Bekleyen:</span> <span id="queue-pending">0</span>
         </div>
+        <!-- Sends made while the app was closed. They are held in the extension
+             until the bridge comes back, so the popup has to account for them —
+             otherwise a queued send looks like nothing happened at all. -->
+        <div class="odm-footer__undelivered" id="undelivered" hidden></div>
         <div class="odm-footer__hint" id="bridge-hint"></div>
+        <!-- Chrome's install dialog reduces this extension's permissions to "read and
+             change all your data on all websites", which is the scariest string the
+             store shows and says nothing about why. The reason is narrow and worth
+             one line: a player can appear on any domain, so the detector has to run
+             anywhere, and what it finds is sent to the desktop app on this machine
+             and nowhere else. -->
+        <div class="odm-footer__privacy" data-i18n="privacyNote">
+            Akışları algılamak için her sitede çalışır. Bulunanlar yalnızca bu
+            bilgisayardaki OMM uygulamasına gider, başka hiçbir yere gönderilmez.
+        </div>
     </footer>
 
     <template id="stream-row-template">

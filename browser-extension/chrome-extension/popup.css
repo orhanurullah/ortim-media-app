@@ -151,6 +151,18 @@ button {
 
 .odm-link:hover { color: var(--accent-hover); }
 
+/* The fold-away control for a page carrying more streams than fit a readable
+   list. Centred and quiet: it is navigation, not one of the row actions. */
+.odm-list__toggle {
+    align-self: center;
+    margin: 2px 0 4px;
+    font-size: 11px;
+    text-decoration: none;
+    opacity: 0.85;
+}
+
+.odm-list__toggle:hover { opacity: 1; text-decoration: underline; }
+
 .odm-row {
     display: flex;
     gap: 10px;
@@ -301,4 +313,26 @@ button {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+/* Sends still waiting for the desktop app. Amber, matching the toolbar badge
+   that reports the same count. */
+.odm-footer__undelivered {
+    color: #d97706;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.odm-footer__undelivered[hidden] {
+    display: none;
+}
+
+/* One-line rationale for the all-sites permission. Deliberately quiet: it is
+   reassurance for the first few visits, not something to read every time. */
+.odm-footer__privacy {
+    margin-top: 6px;
+    font-size: 10.5px;
+    line-height: 1.4;
+    opacity: 0.62;
 }

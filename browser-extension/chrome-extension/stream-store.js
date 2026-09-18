@@ -14,10 +14,99 @@ const MAX_PER_TAB = 50;
 
 const tabStreams = new Map(); // tabId -> Map<signature, StreamRecord>
 
+/** Where the cache is mirrored so it survives the service worker being evicted.
+ *
+ *  MV3 stops the worker after a short idle, taking every in-memory Map with it.
+ *  That was invisible while detection only ran with the desktop app open,
+ *  because each record had already been pushed to the app. Now that detection
+ *  also runs with the app closed - which is the whole point of keeping it on -
+ *  the worker's memory is the only copy, and losing it means a user who browses,
+ *  waits, then opens the popup finds nothing.
+ *
+ *  `session` rather than `local`: it lives for the browser session, is dropped
+ *  on exit, and never touches disk, so nothing a user watched outlives the
+ *  window they watched it in. */
+const SESSION_KEY = 'ommTabStreams';
+/** Writes are coalesced: a playing stream fires detections in bursts, and one
+ *  write per detection would be the cost this whole change exists to avoid. */
+const PERSIST_DEBOUNCE_MS = 400;
+let persistTimer = null;
+
+function schedulePersist() {
+    if (!chrome?.storage?.session || persistTimer) return;
+    persistTimer = setTimeout(() => {
+        persistTimer = null;
+        const plain = {};
+        for (const [tabId, map] of tabStreams) {
+            plain[tabId] = Array.from(map.entries());
+        }
+        chrome.storage.session.set({ [SESSION_KEY]: plain }).catch(() => undefined);
+    }, PERSIST_DEBOUNCE_MS);
+}
+
+/** Reloads the cache after a worker restart. Safe to call more than once: an
+ *  entry already in memory is newer than the stored copy and wins. */
+export async function restoreStreams() {
+    if (!chrome?.storage?.session) return;
+    try {
+        const stored = await chrome.storage.session.get(SESSION_KEY);
+        const plain = stored?.[SESSION_KEY];
+        if (!plain || typeof plain !== 'object') return;
+        for (const [tabId, entries] of Object.entries(plain)) {
+            const id = Number(tabId);
+            if (!Number.isInteger(id) || !Array.isArray(entries)) continue;
+            if (!tabStreams.has(id)) tabStreams.set(id, new Map());
+            const map = tabStreams.get(id);
+            for (const [sig, record] of entries) {
+                if (!map.has(sig)) map.set(sig, record);
+            }
+        }
+    } catch {
+        // A cache that will not load is not a reason to break detection.
+    }
+}
+
 // Query parameters that only version a single logical asset (byte ranges,
 // segment numbers, cache-busters). Stripping them collapses the dozens of
 // near-identical variant requests one stream emits into a single row.
-const VOLATILE_PARAMS = ['range', 'rn', 'rbuf', 'sq', 'dur', 'keepalive', 'mt', 'ei', 'ip', 'clen', 'gir'];
+//
+// The Meta CDNs (Facebook, Instagram) are the reason this list is not just
+// YouTube's: they fetch a progressive MP4 as a series of byte ranges and re-sign
+// every single request, so `bytestart`/`byteend` and the `_nc_*`/`oh`/`oe`
+// signature carry a different value each time. Left in the signature, one 30
+// second reel became one row per chunk — which is how scrolling a feed produced
+// fifty indistinguishable entries. The path already identifies the asset, so the
+// per-request noise can go.
+const VOLATILE_PARAMS = [
+    'range', 'rn', 'rbuf', 'sq', 'dur', 'keepalive', 'mt', 'ei', 'ip', 'clen', 'gir',
+    'bytestart', 'byteend', 'efg', 'ccb', 'oh', 'oe', 'strext', 'vs', 'sid',
+    '_nc_ohc', '_nc_ht', '_nc_cat', '_nc_gid', '_nc_sid', '_nc_zt', '_nc_oc', '_nc_rid',
+];
+
+/** Range parameters that make a URL fetch *part* of a file instead of the file.
+ *  These must be stripped from what we hand the downloader, not merely from the
+ *  dedup signature: the first chunk we happened to see is the one we would have
+ *  stored, and downloading it yields a truncated, unplayable file. */
+const RANGE_PARAMS = ['bytestart', 'byteend', 'range'];
+
+/** The URL to actually download: the observed one, minus any byte-range slice.
+ *  Everything else (the CDN signature above all) is left untouched, because the
+ *  request 403s without it. */
+function downloadableUrl(url) {
+    try {
+        const parsed = new URL(url);
+        let changed = false;
+        for (const param of RANGE_PARAMS) {
+            if (parsed.searchParams.has(param)) {
+                parsed.searchParams.delete(param);
+                changed = true;
+            }
+        }
+        return changed ? parsed.toString() : url;
+    } catch {
+        return url;
+    }
+}
 
 /**
  * Transport-level noise a person never downloads directly: HLS/DASH media
@@ -56,6 +145,53 @@ export function classifyMedia(url, contentType) {
     return null;
 }
 
+// A site's own interface makes noises, and they are served as real media with
+// real media content-types. The one that reached a user's download queue was
+// `https://www.youtube.com/s/search/audio/open.mp3` — YouTube's search-box click
+// sound, 6167 bytes of `audio/mpeg`. It passed every filter, inherited the page
+// title, and sat in the popup looking exactly like the lecture the user wanted.
+//
+// Size is the reliable discriminator. Interface sounds are a few kilobytes;
+// anything a person would want to keep is orders of magnitude larger. The floor
+// only applies to whole files whose length the response actually declared —
+// never to HLS/DASH manifests, which are legitimately tiny, and never when
+// content-length is missing, where the path rule below is the fallback.
+const MEDIA_SIZE_FLOOR_BYTES = 64 * 1024;
+
+// Static/interface asset roots, for when content-length is not declared.
+// `/s/` is YouTube's static asset root (`/s/search/...`, `/s/player/...`).
+const INTERFACE_ASSET_PATH = /(?:^\/s\/)|\/(?:sounds?|sfx|ui|chrome|assets\/audio)\//i;
+
+/** Whether the URL asks for a slice of a file rather than the file. Its declared
+ *  length then measures the slice, which says nothing about the media. */
+function isRangeRequest(url) {
+    try {
+        const parsed = new URL(url);
+        return RANGE_PARAMS.some((param) => parsed.searchParams.has(param));
+    } catch {
+        return false;
+    }
+}
+
+function isInterfaceAsset(url, kind, sizeBytes) {
+    // Manifests describe a stream rather than containing it; their own size says
+    // nothing about the media behind them.
+    if (kind === 'hls' || kind === 'dash') return false;
+    // Nor does the length of a byte range. A player's opening probe can be a few
+    // kilobytes of a feature-length video, so applying the floor here would throw
+    // away the whole asset on the strength of its first chunk.
+    if (isRangeRequest(url)) return false;
+
+    const size = Number(sizeBytes);
+    if (Number.isFinite(size) && size > 0 && size < MEDIA_SIZE_FLOOR_BYTES) return true;
+
+    try {
+        return INTERFACE_ASSET_PATH.test(new URL(url).pathname);
+    } catch {
+        return false;
+    }
+}
+
 /** URL stripped of volatile params and hash, so variant requests collapse. */
 function canonicalUrl(url) {
     try {
@@ -71,6 +207,14 @@ function canonicalUrl(url) {
 function signatureFor(stream) {
     const kind = stream.streamKind || stream.type || 'video';
     return `${kind}|${canonicalUrl(stream.url)}`;
+}
+
+function hostFromUrl(url) {
+    try {
+        return new URL(url).hostname.replace(/^www\./, '');
+    } catch {
+        return '';
+    }
 }
 
 function fileNameFromUrl(url) {
@@ -112,16 +256,25 @@ export function recordStream(tabId, raw) {
     // through, so filtering here cleans up the list everywhere at once.
     const kind = classifyMedia(raw.url, raw.contentType);
     if (!kind) return null;
+    if (isInterfaceAsset(raw.url, kind, raw.sizeBytes)) return null;
 
     const stream = {
-        url: raw.url,
+        url: downloadableUrl(raw.url),
         streamKind: kind,
         type: kind === 'audio' ? 'audio' : 'video',
         contentType: raw.contentType || '',
         title: raw.title || '',
+        // What page it was seen on. A stream sniffed off the network carries no
+        // title of its own, and "1080p MP4" over an opaque CDN file name told the
+        // user nothing about which of fifty rows was the video they were looking
+        // at. The page it came from is the one label that always means something.
+        pageTitle: raw.pageTitle || '',
+        pageHost: raw.pageHost || hostFromUrl(raw.url),
         source: raw.source || 'unknown',
         quality: raw.quality || null,
-        sizeBytes: raw.sizeBytes || null,
+        // A range request declares the length of its slice, not of the file, and
+        // showing "2 MB" beside a 40-minute video is worse than showing nothing.
+        sizeBytes: isRangeRequest(raw.url) ? null : raw.sizeBytes || null,
         firstSeenAt: Date.now(),
         lastSeenAt: Date.now(),
     };
@@ -139,17 +292,36 @@ export function recordStream(tabId, raw) {
     if (existing) {
         existing.lastSeenAt = stream.lastSeenAt;
         if (!existing.title && stream.title) existing.title = stream.title;
+        if (!existing.pageTitle && stream.pageTitle) existing.pageTitle = stream.pageTitle;
         if (!existing.contentType && stream.contentType) existing.contentType = stream.contentType;
+        // A later chunk usually declares a smaller content-length than the whole
+        // file; the largest one seen is the closest thing to the real size.
+        if (stream.sizeBytes && stream.sizeBytes > (existing.sizeBytes || 0)) {
+            existing.sizeBytes = stream.sizeBytes;
+        }
+        schedulePersist();
         return existing;
     }
 
     map.set(sig, stream);
 
+    // Evict the least *recently seen* record, not the first one inserted. The
+    // old rule dropped whatever arrived earliest even if it was the manifest
+    // still actively playing, because refreshing a record does not reorder a Map.
     if (map.size > MAX_PER_TAB) {
-        const oldestKey = map.keys().next().value;
-        if (oldestKey !== undefined) map.delete(oldestKey);
+        let stalestKey;
+        let stalestAt = Infinity;
+        for (const [key, record] of map) {
+            const seenAt = record.lastSeenAt || 0;
+            if (seenAt < stalestAt) {
+                stalestAt = seenAt;
+                stalestKey = key;
+            }
+        }
+        if (stalestKey !== undefined) map.delete(stalestKey);
     }
 
+    schedulePersist();
     return stream;
 }
 
@@ -171,10 +343,14 @@ export function listAllStreams() {
 
 export function clearTab(tabId) {
     tabStreams.delete(tabId);
+    // Mirror the eviction: a closed tab whose records outlived it in session
+    // storage would come back on the next worker restart.
+    schedulePersist();
 }
 
 export function clearAll() {
     tabStreams.clear();
+    schedulePersist();
 }
 
 export function streamCountForTab(tabId) {

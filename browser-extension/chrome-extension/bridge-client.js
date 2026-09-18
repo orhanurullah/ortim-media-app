@@ -63,6 +63,18 @@ class BridgeClient extends EventTarget {
         this._setStatus(ConnectionStatus.DISCONNECTED);
     }
 
+    /**
+     * Force an immediate reconnect attempt, bypassing the current backoff wait.
+     * Called right after the desktop app is woken so queued captures flush the
+     * moment the bridge comes up instead of waiting out the backoff (up to 30s).
+     * No-op unless idle in backoff, so it never stacks onto an in-flight connect.
+     */
+    kick() {
+        if (this.status !== ConnectionStatus.DISCONNECTED) return;
+        this._backoffIndex = 0;
+        this._scheduleConnect(0);
+    }
+
     getSnapshot() {
         return {
             status: this.status,
@@ -81,20 +93,11 @@ class BridgeClient extends EventTarget {
      * Fire-and-forget; failures are logged and surface via getSnapshot().
      */
     async pushCapture(captureRecord) {
-        if (this.status !== ConnectionStatus.CONNECTED) {
-            return { ok: false, reason: 'not_connected' };
-        }
-        try {
-            const response = await this._post(CAPTURE_PATH, {
-                type: 'STREAM_DETECTED',
-                data: captureRecord,
-                timestamp: Date.now(),
-            });
-            return { ok: response.ok, status: response.status };
-        } catch (error) {
-            this.lastError = stringifyError(error);
-            return { ok: false, reason: 'request_failed' };
-        }
+        return this._send(CAPTURE_PATH, {
+            type: 'STREAM_DETECTED',
+            data: captureRecord,
+            timestamp: Date.now(),
+        });
     }
 
     /**
@@ -102,21 +105,11 @@ class BridgeClient extends EventTarget {
      * payload: { stream, downloadType, queueId? } or { urls/rawText, ... } batch.
      */
     async queueDownload(payload) {
-        if (this.status !== ConnectionStatus.CONNECTED) {
-            return { ok: false, reason: 'not_connected' };
-        }
-        try {
-            const response = await this._post(STREAM_PATH, {
-                type: payload.batch ? 'BATCH_DOWNLOAD' : 'DOWNLOAD_REQUEST',
-                data: payload.data,
-                timestamp: Date.now(),
-            });
-            const body = await safeJson(response);
-            return { ok: response.ok, status: response.status, body };
-        } catch (error) {
-            this.lastError = stringifyError(error);
-            return { ok: false, reason: 'request_failed' };
-        }
+        return this._send(STREAM_PATH, {
+            type: payload.batch ? 'BATCH_DOWNLOAD_REQUEST' : 'DOWNLOAD_REQUEST',
+            data: payload.data,
+            timestamp: Date.now(),
+        });
     }
 
     /**
@@ -124,17 +117,46 @@ class BridgeClient extends EventTarget {
      * payload: { url, title?, tabId? }
      */
     async requestAnalyze(payload) {
+        return this._send(ANALYZE_PATH, payload);
+    }
+
+    /**
+     * POST to the bridge, and treat "the app is not there any more" as exactly
+     * that.
+     *
+     * Each send used to answer `request_failed` when the fetch threw, and a bare
+     * `{ ok: false, status: 401 }` when the bridge rejected the token. Both mean
+     * the desktop app this client believed in is gone: it was closed (loopback
+     * connection refused) or it restarted and issued a new token. But only
+     * `not_connected` makes background.js queue the job and wake the app, so
+     * that first send was dropped with a 1.8s "failed" flash and the user had to
+     * click a second time — by then the 8s status poll had noticed and moved the
+     * client to DISCONNECTED, which is why the *second* click was the one that
+     * launched OMM. Note the poll cannot be relied on to notice first: a
+     * suspended MV3 service worker runs no timers at all.
+     *
+     * Dropping the connection here also clears the stale token and schedules the
+     * reconnect, so the queued job flushes as soon as the app answers.
+     */
+    async _send(path, body) {
         if (this.status !== ConnectionStatus.CONNECTED) {
             return { ok: false, reason: 'not_connected' };
         }
+        let response;
         try {
-            const response = await this._post(ANALYZE_PATH, payload);
-            const body = await safeJson(response);
-            return { ok: response.ok, status: response.status, body };
+            response = await this._post(path, body);
         } catch (error) {
             this.lastError = stringifyError(error);
-            return { ok: false, reason: 'request_failed' };
+            this._dropConnection();
+            return { ok: false, reason: 'not_connected' };
         }
+        if (response.status === 401 || response.status === 403) {
+            this.lastError = `auth_failed_${response.status}`;
+            this._dropConnection();
+            return { ok: false, reason: 'not_connected' };
+        }
+        const parsed = await safeJson(response);
+        return { ok: response.ok, status: response.status, body: parsed };
     }
 
     /** Trigger an immediate status refresh. */

@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <title>Ortim Media Manager</title>
+    <style>
+        :root {
+            color-scheme: light dark;
+            --bg: #0f1115;
+            --card: #171a21;
+            --line: #262b36;
+            --text: #e7eaf0;
+            --muted: #9aa3b2;
+            --accent: #16a34a;
+            --warn: #d97706;
+            --error: #dc2626;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--bg);
+            color: var(--text);
+            font: 14px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+            padding: 24px;
+        }
+        .card {
+            width: 100%;
+            max-width: 420px;
+            background: var(--card);
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            padding: 28px 26px 24px;
+            text-align: center;
+        }
+        .logo { width: 56px; height: 56px; margin: 0 auto 14px; display: block; }
+        h1 { font-size: 17px; font-weight: 600; margin: 0 0 6px; }
+        .status { color: var(--muted); margin: 0 0 18px; min-height: 40px; }
+        .spinner {
+            width: 26px; height: 26px; margin: 0 auto 14px;
+            border: 3px solid var(--line);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.9s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .spinner[hidden] { display: none; }
+        .mark { font-size: 30px; line-height: 1; margin-bottom: 10px; }
+        .mark[data-tone="ok"] { color: var(--accent); }
+        .mark[data-tone="error"] { color: var(--error); }
+        .jobs {
+            list-style: none; margin: 0 0 18px; padding: 0;
+            text-align: left; font-size: 12px; color: var(--muted);
+            max-height: 132px; overflow-y: auto;
+        }
+        .jobs li {
+            padding: 6px 9px; border: 1px solid var(--line); border-radius: 7px;
+            margin-bottom: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .actions { display: flex; gap: 9px; justify-content: center; }
+        button {
+            font: inherit; font-weight: 500; cursor: pointer;
+            padding: 9px 17px; border-radius: 8px; border: 1px solid var(--line);
+            background: transparent; color: var(--text);
+        }
+        button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+        button:hover { filter: brightness(1.12); }
+        .hint { margin: 16px 0 0; font-size: 12px; color: var(--muted); }
+        .hint[hidden] { display: none; }
+    </style>
+</head>
+<body>
+    <main class="card">
+        <img class="logo" src="icon-128.png" alt="">
+        <div class="spinner" id="spinner"></div>
+        <div class="mark" id="mark" hidden></div>
+        <h1 id="headline">Ortim Media Manager</h1>
+        <p class="status" id="status"></p>
+        <ul class="jobs" id="jobs"></ul>
+        <div class="actions">
+            <button type="button" class="primary" id="open-btn"></button>
+            <button type="button" id="close-btn"></button>
+        </div>
+        <p class="hint" id="hint" hidden></p>
+    </main>
+    <script src="wake.js"></script>
+</body>
+</html>

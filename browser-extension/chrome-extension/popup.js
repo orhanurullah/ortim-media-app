@@ -17,6 +17,7 @@ const els = {
     scanBtn: document.getElementById('scan-btn'),
     queueActive: document.getElementById('queue-active'),
     queuePending: document.getElementById('queue-pending'),
+    undelivered: document.getElementById('undelivered'),
     bridgeHint: document.getElementById('bridge-hint'),
     rowTemplate: document.getElementById('stream-row-template'),
 };
@@ -33,6 +34,7 @@ const MESSAGES = {
         desktopOpen: 'masaüstü açık mı?', justNow: 'az önce',
         minAgo: '{n} dk önce', hourAgo: '{n} sa önce', dayAgo: '{n} gün önce',
         sectionTitle: 'Bu sekmedeki ortam', emptyLine1: 'Henüz ortam yakalanmadı.',
+        privacyNote: 'Akışları algılamak için her sitede çalışır. Bulunanlar yalnızca bu bilgisayardaki OMM uygulamasına gider, başka hiçbir yere gönderilmez.',
         emptyLine2: 'Sayfayı yenileyin veya ', scanStart: 'tarama başlat',
         scanning: 'taranıyor…', active: 'Aktif:', pending: 'Bekleyen:',
         reconnectTitle: 'Yeniden bağlan', btnQueue: 'Kuyruğa', btnFormat: 'Format ▾',
@@ -40,11 +42,14 @@ const MESSAGES = {
         titleFormat: 'İndirme formatı seç', titleAnalyze: 'Detaylı analiz et',
         titleTranscribe: "OMM'de indir + otomatik yazıya dök (Studio)",
         sending: 'gönderiliyor…', added: 'eklendi', notConnected: 'bağlı değil',
-        failed: 'başarısız', opened: 'açıldı',
+        failed: 'başarısız', opened: 'açıldı', launching: 'OMM açılıyor…',
+        undelivered: '{n} iş OMM açılınca gönderilecek',
         fmtVideoBest: 'Video · En iyi', fmtVideo1080: 'Video · 1080p',
         fmtVideo720: 'Video · 720p', fmtVideo480: 'Video · 480p', fmtAudioMp3: 'Ses · MP3',
         mediaPage: 'medya sayfası', webPage: 'web sayfası', ytdlpAnalyzes: 'yt-dlp analiz eder',
         kindHls: 'HLS akışı', kindDash: 'DASH akışı', kindAudio: 'Ses', kindVideo: 'Video',
+        showAll: 'Sayfadaki diğer {n} akışı göster', showLess: 'Listeyi kısalt',
+        rejected: 'reddedildi',
     },
     en: {
         connecting: 'connecting…', reconnecting: 'reconnecting…',
@@ -54,6 +59,7 @@ const MESSAGES = {
         desktopOpen: 'is the desktop app open?', justNow: 'just now',
         minAgo: '{n} min ago', hourAgo: '{n} h ago', dayAgo: '{n} d ago',
         sectionTitle: 'Media on this tab', emptyLine1: 'No media captured yet.',
+        privacyNote: 'Runs on every site so it can detect streams. What it finds goes only to the OMM app on this computer, and nowhere else.',
         emptyLine2: 'Reload the page or ', scanStart: 'start a scan',
         scanning: 'scanning…', active: 'Active:', pending: 'Pending:',
         reconnectTitle: 'Reconnect', btnQueue: 'Queue', btnFormat: 'Format ▾',
@@ -61,11 +67,14 @@ const MESSAGES = {
         titleFormat: 'Choose download format', titleAnalyze: 'Analyze in detail',
         titleTranscribe: 'Download in OMM + auto-transcribe (Studio)',
         sending: 'sending…', added: 'added', notConnected: 'not connected',
-        failed: 'failed', opened: 'opened',
+        failed: 'failed', opened: 'opened', launching: 'opening OMM…',
+        undelivered: '{n} waiting for OMM to open',
         fmtVideoBest: 'Video · Best', fmtVideo1080: 'Video · 1080p',
         fmtVideo720: 'Video · 720p', fmtVideo480: 'Video · 480p', fmtAudioMp3: 'Audio · MP3',
         mediaPage: 'media page', webPage: 'web page', ytdlpAnalyzes: 'yt-dlp analyzes it',
         kindHls: 'HLS stream', kindDash: 'DASH stream', kindAudio: 'Audio', kindVideo: 'Video',
+        showAll: 'Show the other {n} streams on this page', showLess: 'Show fewer',
+        rejected: 'rejected',
     },
 };
 
@@ -174,6 +183,23 @@ async function refresh() {
     cachedStreams = state.streams || [];
     pageCapture = state.pageCapture || null;
     renderStreams();
+    refreshUndelivered();
+}
+
+// Sends made while the desktop app was closed sit in the extension until the
+// bridge returns. Without this line the popup showed "Bekleyen: 0" for them,
+// which reads as "nothing was sent".
+async function refreshUndelivered() {
+    const handoff = await sendMessage({ action: 'WAKE_GET_STATE' });
+    applyUndelivered(handoff);
+}
+
+function applyUndelivered(handoff) {
+    if (!els.undelivered) return;
+    const count = handoff?.pending?.length || 0;
+    els.undelivered.hidden = count === 0;
+    els.undelivered.textContent = count === 0 ? '' : t('undelivered', { n: count });
+    els.undelivered.title = count === 0 ? '' : (handoff.pending || []).join('\n');
 }
 
 let lastConnectedAt = null;
@@ -220,6 +246,13 @@ function setStatus(state, text) {
     els.statusText.textContent = text;
 }
 
+// How many rows to show before folding the rest away. A social feed autoplays
+// every video it scrolls past, so the honest count can be dozens — and a wall of
+// dozens is what stopped the list being readable at all. The page row and the
+// first few streams are what a user acts on; the rest stay one click away.
+const COLLAPSED_ROW_LIMIT = 6;
+let showAllRows = false;
+
 function renderStreams() {
     const rows = [];
     if (pageCapture) rows.push({ ...pageCapture, _isPage: true });
@@ -229,6 +262,7 @@ function renderStreams() {
     els.streamsList.innerHTML = '';
 
     if (rows.length === 0) {
+        showAllRows = false;
         els.streamsList.appendChild(els.streamsEmpty);
         els.streamsEmpty.style.display = '';
         const link = els.streamsEmpty.querySelector('#scan-btn');
@@ -238,9 +272,63 @@ function renderStreams() {
         return;
     }
 
-    for (const row of rows) {
+    assignDisplayLabels(rows);
+
+    const collapsed = !showAllRows && rows.length > COLLAPSED_ROW_LIMIT;
+    const visible = collapsed ? rows.slice(0, COLLAPSED_ROW_LIMIT) : rows;
+    for (const row of visible) {
         els.streamsList.appendChild(renderRow(row));
     }
+
+    if (rows.length > COLLAPSED_ROW_LIMIT) {
+        const toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.className = 'odm-link odm-list__toggle';
+        toggle.textContent = collapsed
+            ? t('showAll', { n: rows.length - COLLAPSED_ROW_LIMIT })
+            : t('showLess');
+        toggle.addEventListener('click', () => {
+            showAllRows = !showAllRows;
+            renderStreams();
+        });
+        els.streamsList.appendChild(toggle);
+    }
+}
+
+/**
+ * Give every row a label a person can tell apart.
+ *
+ * A stream sniffed off the network carries no title of its own — only an opaque
+ * CDN file name — so the list read as fifty variations of `1080p.mp4`. The page
+ * it was captured from is the label that means something; where several streams
+ * share one page, the file name is appended so they stay distinguishable.
+ */
+function assignDisplayLabels(rows) {
+    const counts = new Map();
+    for (const row of rows) {
+        const base = baseLabelFor(row);
+        row._label = base;
+        counts.set(base, (counts.get(base) || 0) + 1);
+    }
+    for (const row of rows) {
+        if (row._isPage || counts.get(row._label) === 1) continue;
+        const discriminator = (row.fileName || '').trim();
+        if (discriminator) {
+            row._label = `${row._label} · ${truncate(discriminator, 28)}`;
+        }
+    }
+}
+
+function baseLabelFor(row) {
+    const own = (row.title || '').trim();
+    if (own) return own;
+    const page = (row.pageTitle || '').trim();
+    if (page) return page;
+    return (row.fileName || '').trim() || row.url;
+}
+
+function truncate(value, max) {
+    return value.length > max ? `${value.slice(0, max - 1)}…` : value;
 }
 
 function renderRow(stream) {
@@ -263,6 +351,12 @@ function renderRow(stream) {
     transcribeBtn.textContent = t('btnTranscribe');
     transcribeBtn.title = t('titleTranscribe');
 
+    // Remembered so a transient state (sending / rejected) can hand the button
+    // its own tooltip back afterwards instead of leaving it bare.
+    for (const button of [queueBtn, moreBtn, analyzeBtn, transcribeBtn]) {
+        button.dataset.defaultTitle = button.title;
+    }
+
     if (stream._isPage) {
         icon.dataset.kind = 'page';
         icon.textContent = '⎘';
@@ -271,7 +365,7 @@ function renderRow(stream) {
         icon.textContent = stream.type === 'audio' ? '♪' : '▶';
     }
 
-    title.textContent = stream.title?.trim() || stream.fileName || stream.url;
+    title.textContent = stream._label || stream.title?.trim() || stream.fileName || stream.url;
     title.title = stream.url;
 
     meta.textContent = formatMeta(stream);
@@ -338,6 +432,10 @@ function formatMeta(stream) {
     const parts = [describeKind(stream)];
     if (stream.quality && stream.quality !== 'unknown') parts.push(stream.quality);
     if (stream.sizeBytes) parts.push(formatBytes(stream.sizeBytes));
+    // Where it came from (the page's host, or the CDN's when the page is not
+    // known) is the difference between "some mp4" and "the video on this page",
+    // and it is the one fact every sniffed stream actually has.
+    if (stream.pageHost) parts.push(stream.pageHost);
     return parts.filter(Boolean).join(' · ');
 }
 
@@ -376,8 +474,15 @@ async function onQueue(stream, button, option) {
     if (result?.ok) {
         setButtonState(button, 'ok', t('added'));
         setTimeout(() => setButtonState(button, null, t('btnQueue')), 1400);
+    } else if (result?.reason === 'launching') {
+        setButtonState(button, 'busy', t('launching'));
+        setTimeout(() => setButtonState(button, null, t('btnQueue')), 2200);
     } else {
         const reason = result?.reason || result?.error || 'hata';
+        // The app usually said *why* it refused; the button only had room for
+        // "failed", and the detail used to be dropped on the floor. It goes on
+        // the tooltip, which is where a one-line reason can actually fit.
+        button.title = describeFailure(result) || '';
         setButtonState(button, 'error', reason === 'not_connected' ? t('notConnected') : t('failed'));
         setTimeout(() => setButtonState(button, null, t('btnQueue')), 1800);
     }
@@ -394,8 +499,15 @@ async function onAnalyze(stream, button) {
     if (result?.ok) {
         setButtonState(button, 'ok', t('opened'));
         setTimeout(() => setButtonState(button, null, t('btnAnalyze')), 1400);
+    } else if (result?.reason === 'launching') {
+        setButtonState(button, 'busy', t('launching'));
+        setTimeout(() => setButtonState(button, null, t('btnAnalyze')), 2200);
     } else {
         const reason = result?.reason || result?.error || 'hata';
+        // The app usually said *why* it refused; the button only had room for
+        // "failed", and the detail used to be dropped on the floor. It goes on
+        // the tooltip, which is where a one-line reason can actually fit.
+        button.title = describeFailure(result) || '';
         setButtonState(button, 'error', reason === 'not_connected' ? t('notConnected') : t('failed'));
         setTimeout(() => setButtonState(button, null, t('btnAnalyze')), 1800);
     }
@@ -413,14 +525,43 @@ async function onTranscribe(stream, button) {
     if (result?.ok) {
         setButtonState(button, 'ok', t('opened'));
         setTimeout(() => setButtonState(button, null, t('btnTranscribe')), 1400);
+    } else if (result?.reason === 'launching') {
+        setButtonState(button, 'busy', t('launching'));
+        setTimeout(() => setButtonState(button, null, t('btnTranscribe')), 2200);
     } else {
         const reason = result?.reason || result?.error || 'hata';
+        // The app usually said *why* it refused; the button only had room for
+        // "failed", and the detail used to be dropped on the floor. It goes on
+        // the tooltip, which is where a one-line reason can actually fit.
+        button.title = describeFailure(result) || '';
         setButtonState(button, 'error', reason === 'not_connected' ? t('notConnected') : t('failed'));
         setTimeout(() => setButtonState(button, null, t('btnTranscribe')), 1800);
     }
 }
 
+/** The desktop app's own rejection reason, in one line.
+ *  The bridge answers `{ success: false, error }`, where `error` is often a
+ *  JSON-encoded command error carrying the actionable message. */
+function describeFailure(result) {
+    const raw = result?.body?.error ?? result?.error ?? null;
+    let text = typeof raw === 'string' ? raw.trim() : '';
+    if (text.startsWith('{') && text.endsWith('}')) {
+        try {
+            const parsed = JSON.parse(text);
+            text = String(parsed?.message || parsed?.code || text).trim();
+        } catch {
+            /* not the structured shape; show it verbatim */
+        }
+    }
+    if (!text && result?.status) text = `HTTP ${result.status}`;
+    return text ? `${t('rejected')}: ${text.slice(0, 240)}` : '';
+}
+
 function setButtonState(button, state, label) {
+    // Any state other than the failure itself puts the button's own tooltip back,
+    // so a rejection reason never outlives what it explains — and the standing
+    // "what does this button do" hint is not lost along with it.
+    if (state !== 'error') button.title = button.dataset.defaultTitle || '';
     if (state) button.dataset.state = state;
     else delete button.dataset.state;
     if (label) button.textContent = label;
@@ -430,6 +571,8 @@ function onBackgroundEvent(message) {
     if (!message || typeof message !== 'object') return;
     if (message.type === 'BRIDGE_STATUS' && message.snapshot) {
         applyBridge(message.snapshot);
+    } else if (message.type === 'HANDOFF_UPDATE') {
+        applyUndelivered(message.state);
     } else if (message.type === 'TAB_STREAMS_UPDATED' && message.tabId === activeTabId) {
         cachedStreams = message.streams || [];
         renderStreams();

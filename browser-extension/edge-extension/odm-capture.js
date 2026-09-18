@@ -1,13 +1,22 @@
 /**
- * ODM Capture — heavy content script injected on demand
+ * ODM Capture — DOM watcher injected on demand
  *
  * Injected by the background service worker via chrome.scripting.executeScript
- * only on known media hosts, or when the user explicitly requests a scan.
+ * on known media hosts, or when the user explicitly requests a scan.
  *
  * Responsibilities:
- *   1. Intercept fetch + XMLHttpRequest to detect media streams.
- *   2. Watch dynamically added <video>/<audio> elements.
- *   3. Report hits to the background via STREAM_INFO_DETECTED.
+ *   1. Watch for <video>/<audio> elements, including ones added later.
+ *   2. Report hits to the background via STREAM_INFO_DETECTED.
+ *
+ * What it deliberately does *not* do any more is hook `fetch` and
+ * `XMLHttpRequest`. It used to, and those hooks never fired once: an
+ * `executeScript` without `world: 'MAIN'` runs in the isolated world, whose
+ * `window.fetch` and `XMLHttpRequest.prototype` are different objects from the
+ * page's. The patches therefore intercepted only this script's own requests — of
+ * which there are none — while still wrapping two hot paths on every media page
+ * and implying a network coverage that did not exist. The coverage is real, just
+ * elsewhere: `chrome.webRequest` in the background sees every request the page
+ * makes, and is where captures actually come from.
  */
 (() => {
     if (window.__odmCaptureLoaded) return;
@@ -76,43 +85,6 @@
             url: location.href,
             timestamp: now
         });
-    };
-
-    const originalFetch = window.fetch;
-    if (typeof originalFetch === 'function') {
-        window.fetch = function odmFetch(input, init) {
-            const requestUrl = (() => {
-                if (!input) return '';
-                if (typeof input === 'string') return input;
-                if (typeof Request !== 'undefined' && input instanceof Request) return input.url || '';
-                if (typeof input === 'object' && typeof input.url === 'string') return input.url;
-                return '';
-            })();
-            const result = originalFetch.apply(this, arguments);
-            Promise.resolve(result).then((response) => {
-                try {
-                    const url = (response && response.url) || requestUrl;
-                    const contentType = response && response.headers && typeof response.headers.get === 'function'
-                        ? (response.headers.get('content-type') || '')
-                        : '';
-                    reportStream(url, contentType, 'network_fetch');
-                } catch (_) { /* ignore */ }
-            }).catch(() => { /* ignore */ });
-            return result;
-        };
-    }
-
-    const originalXhrOpen = XMLHttpRequest.prototype.open;
-    XMLHttpRequest.prototype.open = function odmXhrOpen(method, url) {
-        this.__odmUrl = typeof url === 'string' ? url : String(url || '');
-        this.addEventListener('loadend', () => {
-            try {
-                let contentType = '';
-                try { contentType = this.getResponseHeader('content-type') || ''; } catch (_) { /* ignore */ }
-                reportStream(this.__odmUrl, contentType, 'network_xhr');
-            } catch (_) { /* ignore */ }
-        });
-        return originalXhrOpen.apply(this, arguments);
     };
 
     const scanDom = () => {

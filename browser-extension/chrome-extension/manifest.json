@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Ortim Media Manager",
-  "version": "3.1.0",
+  "version": "3.3.1",
   "description": "Detects video/audio streams on any page and sends them to the Ortim Media Manager (OMM) desktop app.",
   "permissions": [
     "activeTab",
