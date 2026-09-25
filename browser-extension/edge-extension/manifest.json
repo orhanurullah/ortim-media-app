@@ -61,11 +61,5 @@
     "32": "icon-32.png",
     "48": "icon-48.png",
     "128": "icon-128.png"
-  },
-  "externally_connectable": {
-    "matches": [
-      "http://localhost:*/*",
-      "http://127.0.0.1:*/*"
-    ]
   }
 }
